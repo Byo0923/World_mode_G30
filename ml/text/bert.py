@@ -7,49 +7,45 @@ import torch.nn as nn
 import torch.optim as optim
 from pytorch_pretrained_bert import BertAdam
 
-from mmbt.data.helpers import get_data_loaders
-from mmbt.models import get_model
-from mmbt.utils.logger import create_logger
-from mmbt.utils.utils import *
-
-
-# 事前学習済みモデルのロード
-from transformers import BertModel
-bert = BertModel.from_pretrained('bert-base-uncased')
-
 # モデルの定義
-# 事前学習済みモデルの後段に線形関数を追加し、この出力で感情分析をする
 import torch.nn as nn
 
-class BERTSentiment(nn.Module):
+class BERT_Report(nn.Module):
     def __init__(self,
                  bert,
-                 output_dim):
+                 output_dim,
+                 tokenizer):
         
         super().__init__()
         
         self.bert = bert
-        embedding_dim = bert.config.to_dict()['hidden_size']
-        self.out = nn.Linear(embedding_dim, output_dim)
+        self.linear_1 = nn.Linear(768, 256)
+        self.linear_2 = nn.Linear(256, output_dim)
+        self.tokenizer = tokenizer
         
     def forward(self, text):
-        #text = [batch size, sent len]
+        output_1 = self.bert(text)[1].squeeze(0)
+        output_2 = self.linear_1(output_1)  # バッチ次元を除去)
+        output_3 = self.linear_2(output_2)
+        return output_3
+    
+    def encoding(self, text):
+        encoding = self.tokenizer(
+            text, 
+            max_length =500, 
+            padding ="max_length", 
+            truncation=True,
+            return_tensors="pt"
+        )
+        return encoding
 
-        #embedded = [batch size, emb dim]
-        embedded = self.bert(text)[1]
-        print("embedded" , embedded.size() )
+# # モデルインスタンスの生成
+# # 出力は感情分析なので2
+# OUTPUT_DIM = 2
 
-        #output = [batch size, out dim]
-        output = self.out(embedded)
-        
-        return output
-# モデルインスタンスの生成
-# 出力は感情分析なので2
-OUTPUT_DIM = 2
+# model = BERTSentiment(bert, OUTPUT_DIM).to(device)
+# model.eval()
 
-model = BERTSentiment(bert, OUTPUT_DIM).to(device)
-model.eval()
-
-input = encoding.input_ids.to(device)
-predictions = model(input)
-print(predictions)
+# input = encoding.input_ids.to(device)
+# predictions = model(input)
+# print(predictions)

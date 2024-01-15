@@ -1,39 +1,41 @@
 import torch
 import torch.nn as nn
 import random
+import numpy as np
+import math
 
-# Transformerエンコーダモデルの定義
-class TransformerModel(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, nhead, num_encoder_layers, dim_feedforward):
-        super(TransformerModel, self).__init__()
+# 位置エンコーディングの関数を定義
+def positional_encoding(seq_len, d_model):
+    """ 位置エンコーディングを生成する関数 """
+    position = np.arange(seq_len)[:, np.newaxis]
+    div_term = np.exp(np.arange(0, d_model, 2) * -(np.log(10000.0) / d_model))
+    pe = np.zeros((seq_len, d_model))
+    pe[:, 0::2] = np.sin(position * div_term)
+    pe[:, 1::2] = np.cos(position * div_term)
+
+    return torch.tensor(pe, dtype=torch.float)
+
+# Transformerエンコーダモデルの定義（位置エンコーディングとアテンションメカニズム付き）
+class TransformerModelWithPositionalEncoding(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, nhead, num_encoder_layers, dim_feedforward, max_seq_len=200):
+        super(TransformerModelWithPositionalEncoding, self).__init__()
         self.linear_in = nn.Linear(input_size, hidden_size)
+        self.pos_encoder = positional_encoding(max_seq_len, hidden_size).to("cuda")
         encoder_layers = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=nhead, dim_feedforward=dim_feedforward)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers=num_encoder_layers)
         self.linear_out = nn.Linear(hidden_size, output_size)
+        self.attention_weights = nn.Linear(hidden_size, 1)
 
     def forward(self, src):
-        src = self.linear_in(src)
+        # 入力データに位置エンコーディングを加算
+        src = self.linear_in(src) + self.pos_encoder[:src.size(1), :]
         output = self.transformer_encoder(src)
-        output = self.linear_out(output[-1])  # 最後のタイムステップの出力のみを使用
-        return output
 
-# モデルのパラメータを設定
-input_size = 10  # 時系列データの特徴量の数
-hidden_size = 512  # Transformer内部の隠れ状態のサイズ
-output_size = 128  # 出力する潜在変数の次元数
-nhead = 8  # マルチヘッドアテンションのヘッド数
-num_encoder_layers = 3  # エンコーダレイヤーの数
-dim_feedforward = 2048  # フィードフォワードネットワークの次元
+        # アテンションの重みを計算
+        attn_weights = torch.softmax(self.attention_weights(output).squeeze(-1), dim=1)
 
-# モデルのインスタンス化
-transformer_model = TransformerModel(input_size, hidden_size, output_size, nhead, num_encoder_layers, dim_feedforward)
+        # 重み付き平均ベクトルを計算
+        weighted_output = torch.bmm(attn_weights.unsqueeze(1), output).squeeze(1)
+        output = self.linear_out(weighted_output).squeeze(0)
+        return output, attn_weights
 
-# ダミーの時系列データを生成（長さは15から20のランダム）
-sequence_length = random.randint(15, 20)
-dummy_time_series = torch.randn(sequence_length, 1, input_size)
-
-# Transformerモデルに入力
-# バッチサイズが1のため、[シーケンス長, バッチサイズ, 特徴量数]に変形
-dummy_time_series = dummy_time_series.permute(1, 0, 2)
-latent_vector = transformer_model(dummy_time_series)
-latent_vector.shape  # 潜在ベクトルの形状を確認
