@@ -2,6 +2,12 @@
 .DS_Store
 .vscode
 
+# text
+*.txt
+
+# pkl
+*.pkl
+
 logs
 
 # PyTorch Models

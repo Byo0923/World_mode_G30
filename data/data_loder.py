@@ -78,13 +78,32 @@ class FinancialDataset(Dataset):
         x_tech = x_tech_list
         return x_tech, x_text, t
 
+    # @staticmethod
+    # def collate_fn(batch):
+    #     print("batch_collate", batch[0][0][0].shape)
+    #     # バッチ内の各データポイントに対してパディングを適用
+    #     x_tech_batch = [pad_sequence(week_data, batch_first=True) for week_data in zip(*[item[0] for item in batch])]
+    #     x_tech_batch = torch.cat(x_tech_batch, dim=0).view(len(batch), -1, *x_tech_batch[0].shape[1:])
+        
+    #     x_text_batch = torch.stack([item[1] for item in batch])
+    #     t_batch = torch.stack([item[2] for item in batch])
+
+    #     return x_tech_batch, x_text_batch, t_batch
+
     @staticmethod
     def collate_fn(batch):
-        # バッチ内の各データポイントに対してパディングを適用
-        x_tech_batch = [pad_sequence(week_data, batch_first=True) for week_data in zip(*[item[0] for item in batch])]
-        x_tech_batch = torch.cat(x_tech_batch, dim=0).view(len(batch), -1, *x_tech_batch[0].shape[1:])
+        #print("batch_collate", batch[0][0][0].shape)
+        # 固定長31で各週のデータをパディング
+        padded_week_data = []
+        for week_data in zip(*[item[0] for item in batch]):
+            padded_data = [x[:31] if x.shape[0] > 31 else F.pad(x, (0, 0, 0, 31 - x.shape[0]), "constant", 0) for x in week_data]
+            padded_week_data.append(torch.stack(padded_data, dim=0))
+
+        # バッチ内でデータを組み合わせる
+        x_tech_batch = torch.stack(padded_week_data, dim=1)
 
         x_text_batch = torch.stack([item[1] for item in batch])
         t_batch = torch.stack([item[2] for item in batch])
 
         return x_tech_batch, x_text_batch, t_batch
+ 
