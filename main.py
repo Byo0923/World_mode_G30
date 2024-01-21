@@ -97,9 +97,9 @@ for name, param in bert_model.bert.named_parameters():
     # ここで凍結したい層の名前を指定します。例えば、'encoder.layer.11'とすると最後の層のみをファインチューニングします。
     if ('encoder.layer.11' not in name) and ('pooler' not in name):    
         param.requires_grad = False
-    print(param_bert_num)
-    print(name)
-    print(param.requires_grad)
+    # print(param_bert_num)
+    # print(name)
+    # print(param.requires_grad)
     param_bert_num += 1
 
 # # BERTモデルのパラメータをフリーズ
@@ -167,8 +167,11 @@ financial_dataset = FinancialDataset(data, week_len=4, target_len=80)
 # # DataLoader を使用してデータセットをロード
 financial_dataloader = DataLoader(financial_dataset, batch_size=batch_size, shuffle=True, collate_fn=FinancialDataset.collate_fn)
 
+# エポックを通しての損失を格納するリスト
+losses = []
+
 # Generatorの学習
-for i in tqdm(range(learning_epoch_num)):
+for epoch in tqdm(range(learning_epoch_num)):
     for j, data in enumerate(financial_dataloader):
         #print("data_shape", data[0].shape)
         week = data[0].shape[1]
@@ -229,6 +232,11 @@ for i in tqdm(range(learning_epoch_num)):
         # 誤差逆伝播
         loss.backward(retain_graph=False)
 
+        # TensorをNumPyに変換
+        loss_numpy = loss.cpu().detach().numpy()
+        # 損失をリストに追加
+        losses.append(loss_numpy)
+
         # パラメータの更新
         bert_model_optimizer.step()
         transformer_optimizer.step()
@@ -236,19 +244,22 @@ for i in tqdm(range(learning_epoch_num)):
         optimizer_generator.step()
 
         # 損失の出力
-        print(f"RMSE Loss: {loss.item()}")
+        # print(f"RMSE Loss: {loss.item()}")
 
-        # TensorBoard 用のデータを保存
-        writer.add_scalar("RMSE Loss", loss.item(), j)
+    # エポックの平均損失の計算
+    avg_loss = np.mean(losses)
+    # TensorBoardに記録
+    writer.add_scalar('Training loss', avg_loss, epoch)
 
+    logging.info('Training loss : epoch = '  + str(epoch) +  '  loss = ' + str(avg_loss) ) 
 
     # modelの保存. model/ に保存される
-    if i % 10 == 0:
-        torch.save(bert_model.state_dict(), f"model/bert_model_{i}.pth")
-        torch.save(transformer_model_with_attention.state_dict(), f"model/transformer_model_with_attention_{i}.pth")
-        torch.save(text_cconcatenate.state_dict(), f"model/text_cconcatenate_{i}.pth")
-        torch.save(generator.state_dict(), f"model/generator_{i}.pth")
-        torch.save(discriminator.state_dict(), f"model/discriminator_{i}.pth")
+    if epoch % 10 == 0:
+        torch.save(bert_model.state_dict(), f"model/bert_model_{epoch}.pth")
+        torch.save(transformer_model_with_attention.state_dict(), f"model/transformer_model_with_attention_{epoch}.pth")
+        torch.save(text_cconcatenate.state_dict(), f"model/text_cconcatenate_{epoch}.pth")
+        torch.save(generator.state_dict(), f"model/generator_{epoch}.pth")
+        torch.save(discriminator.state_dict(), f"model/discriminator_{epoch}.pth")
 
 
 
