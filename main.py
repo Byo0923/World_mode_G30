@@ -153,7 +153,7 @@ criterion = nn.BCELoss()
 
 
 # データ読み込み
-data = pd.read_pickle('sentiment_tech_data.pkl')
+data = pd.read_pickle('data/sentiment_stock_data.pkl')
 # print("L129 data" , data)
 
 # FinancialDataset クラスのインポート

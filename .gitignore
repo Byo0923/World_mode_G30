@@ -6,7 +6,7 @@
 *.txt
 
 # pkl
-*.pkl
+data/stock_data/*.pkl
 
 logs
 
