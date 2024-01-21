@@ -22,11 +22,15 @@ class BERT_Report(nn.Module):
         self.linear_1 = nn.Linear(768, 256)
         self.linear_2 = nn.Linear(256, output_dim)
         self.tokenizer = tokenizer
-        
+        self.relu = nn.ReLU()
+
     def forward(self, text):
         output_1 = self.bert(text)[1].squeeze(0)
         output_2 = self.linear_1(output_1)  # バッチ次元を除去)
+        # output_2 = self.relu(output_1)
         output_3 = self.linear_2(output_2)
+        # output_3 = self.relu(output_2)
+
         return output_3
     
     def encoding(self, text):

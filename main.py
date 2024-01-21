@@ -138,11 +138,11 @@ Generatorが弱すぎて鍛えないとあかん
 """
 from ml.gan.generator import Generator
 generator   = Generator().to(device)
-optimizer_generator = torch.optim.AdamW(bert_model.parameters(), lr=0.0001)
+optimizer_generator = torch.optim.AdamW(generator.parameters(), lr=0.0001)
 
 from ml.gan.discriminator import Discriminator
 discriminator   = Discriminator().to(device)
-optimizer_discriminator = torch.optim.AdamW(bert_model.parameters(), lr=0.0001)
+optimizer_discriminator = torch.optim.AdamW(discriminator.parameters(), lr=0.0001)
 
 
 # RMSE損失関数を定義
@@ -169,6 +169,9 @@ financial_dataloader = DataLoader(financial_dataset, batch_size=batch_size, shuf
 
 # エポックを通しての損失を格納するリスト
 losses = []
+
+max_grad_norm = 1.0  # 勾配の最大ノルム
+
 
 # Generatorの学習
 for epoch in tqdm(range(learning_epoch_num)):
@@ -231,6 +234,12 @@ for epoch in tqdm(range(learning_epoch_num)):
 
         # 誤差逆伝播
         loss.backward(retain_graph=False)
+
+        # 勾配クリッピングの適用
+        torch.nn.utils.clip_grad_norm_(bert_model.parameters(), max_grad_norm)
+        torch.nn.utils.clip_grad_norm_(transformer_model_with_attention.parameters(), max_grad_norm)
+        torch.nn.utils.clip_grad_norm_(text_cconcatenate.parameters(), max_grad_norm)
+        torch.nn.utils.clip_grad_norm_(generator.parameters(), max_grad_norm)
 
         # TensorをNumPyに変換
         loss_numpy = loss.cpu().detach().numpy()
