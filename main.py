@@ -226,7 +226,7 @@ for epoch in tqdm(range(learning_epoch_num)):
 
         #print("target_shape", data[2].shape)
         # 教師データと推定データを生成
-        target = data[2][:, :, 4:7].to(device)  # 教師データ
+        target = data[2].to(device)  # 教師データ
         #print("target", target.shape)
 
         # 損失の計算

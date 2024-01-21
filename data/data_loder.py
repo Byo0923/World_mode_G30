@@ -1,9 +1,6 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import os
-import sys
-import pickle
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -12,13 +9,18 @@ from torch.utils.data import DataLoader, Dataset
 from sklearn.model_selection import train_test_split
 from transformers import BertTokenizer
 from torch.nn.utils.rnn import pad_sequence
+import logging
 
 class FinancialDataset(Dataset):
     def __init__(self, data, week_len=4, target_len=80):
         self.data = data
         self.week_len = week_len
         self.target_len = target_len
+        self.scaling_param = 20000
+
+        logging.info(f"Start preprocessing.")
         self.x_tech, self.x_text, self.t = self.preprocessing(data, week_len, target_len)
+        logging.info(f"Finish preprocessing. Data size is {len(self.x_tech)}")
 
     def __len__(self):
         return len(self.x_tech)
@@ -32,6 +34,8 @@ class FinancialDataset(Dataset):
         x_text_list = []
         t_list = []
 
+        #max_len = 0
+
         tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
         for week in range(1, data["Week"].max() + 1 - week_len):
             if not len(data[data["Week"] >= week + 4]) < target_len:
@@ -40,7 +44,10 @@ class FinancialDataset(Dataset):
                 break
 
             target_data = target_data.reset_index(drop=True)
-            target_data = target_data[["open_mid", "high_mid", "low_mid", "close_mid", "20SMA", "20Upper", "20Lower"]].values
+            #target_data = target_data[["open_mid", "high_mid", "low_mid", "close_mid", "20SMA", "20Upper", "20Lower"]].values
+            target_data = target_data[["20SMA", "20Upper", "20Lower"]].values
+            # scaling
+            target_data = target_data / self.scaling_param
             t_list.append(target_data)
 
             x_text_region_list = []
@@ -51,7 +58,13 @@ class FinancialDataset(Dataset):
                 x_tech = x_tech.drop(["Week", "Year", "US", "JP", "EU", "CH", "GE"], axis=1)
                 x_tech = x_tech.values
                 x_tech = torch.tensor(x_tech, dtype=torch.float32)
+                # scaling
+                x_tech = x_tech / self.scaling_param
                 week_4_data_list.append(x_tech)
+
+                # x_techのテンソルの最大値をtorch.maxで取得
+                #max_len = max(max_len, torch.max(x_tech))
+                
 
                 # センチメントデータ
                 ids_list = []
@@ -76,6 +89,9 @@ class FinancialDataset(Dataset):
         x_text = torch.stack(x_text_list, dim=0)
         t = torch.tensor(t_list, dtype=torch.float32)
         x_tech = x_tech_list
+
+        #print(max_len)
+
         return x_tech, x_text, t
 
     # @staticmethod
@@ -106,4 +122,28 @@ class FinancialDataset(Dataset):
         t_batch = torch.stack([item[2] for item in batch])
 
         return x_tech_batch, x_text_batch, t_batch
+
+if __name__ == "__main__":
+    # データローダーランダムシードの設定
+    seed = 2024
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
+    # データ読み込み
+    data = pd.read_pickle('sentiment_tech_data.pkl')
+    financial_dataset = FinancialDataset(data, week_len=4, target_len=80)
+
+    # # DataLoader を使用してデータセットをロード
+    financial_dataloader = DataLoader(financial_dataset, batch_size=16, shuffle=True, collate_fn=FinancialDataset.collate_fn)
+
+    for i, data in enumerate(financial_dataloader):
+        print("Stock:", data[0].shape)
+        print("Text:", data[1].shape)
+        print("Target", data[2].shape)
+        break
+    
+
+
+
+
  
