@@ -37,7 +37,7 @@ class FinancialDataset(Dataset):
         #max_len = 0
 
         tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-        for week in range(1, data["Week"].max() + 1 - week_len):
+        for week in range(data["Week"].min(), data["Week"].max() + 1 - week_len):
             if not len(data[data["Week"] >= week + 4]) < target_len:
                 target_data = data[data["Week"] >= week + 4].reset_index(drop=True)[:target_len]
             else:

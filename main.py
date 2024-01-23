@@ -6,7 +6,6 @@ from torch.utils.data import DataLoader
 
 import random
 
-
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -71,7 +70,7 @@ writer: SummaryWriter = SummaryWriter(
 
 # tensorboard --logdir=logd
 
-batch_size = 16
+batch_size = 4
 logging.info("batch_size = " + str(batch_size) )
 learning_epoch_num = 1000
 logging.info("learning_epoch_num = " + str(learning_epoch_num) )
@@ -133,15 +132,14 @@ all_reports_out_dim = 128
 text_cconcatenate = TEXT_Cconcatenate(all_reports_dim, all_reports_out_dim).to(device)
 text_cconcatenate_optimizer = torch.optim.AdamW(text_cconcatenate.parameters(), lr=0.0001)
 
-"""
-Generatorが弱すぎて鍛えないとあかん
-"""
+# Generator
 from ml.gan.generator import Generator
 generator   = Generator().to(device)
 optimizer_generator = torch.optim.AdamW(generator.parameters(), lr=0.0001)
 
-from ml.gan.discriminator import Discriminator
-discriminator   = Discriminator().to(device)
+# Discriminator
+from ml.gan.discriminator import *
+discriminator = NewDiscriminator().to(device)#Discriminator().to(device)
 optimizer_discriminator = torch.optim.AdamW(discriminator.parameters(), lr=0.0001)
 
 
@@ -149,33 +147,34 @@ optimizer_discriminator = torch.optim.AdamW(discriminator.parameters(), lr=0.000
 def rmse_loss(input, target):
     return torch.sqrt(torch.mean((input - target) ** 2))
 
+# 二値交差エントロピー損失関数を定義(Discriminator用)
 criterion = nn.BCELoss()
-
 
 # データ読み込み
 data = pd.read_pickle('data/sentiment_stock_data.pkl')
-# print("L129 data" , data)
+train_data = data[data.index < '2022-01-03']
+valid_data = data[data.index >= '2022-01-03']
 
 # FinancialDataset クラスのインポート
-# from your_module import FinancialDataset
-
-# データセットのインスタンスを作成
-# ここでは `data` を事前に定義または読み込んでいると仮定
 from data.data_loder import FinancialDataset
-financial_dataset = FinancialDataset(data, week_len=4, target_len=80)
+train_dataset = FinancialDataset(train_data, week_len=4, target_len=80)
+valid_dataset = FinancialDataset(valid_data, week_len=4, target_len=80)
+print("train_dataset", len(train_dataset))
+print("valid_dataset", len(valid_dataset))
 
 # # DataLoader を使用してデータセットをロード
-financial_dataloader = DataLoader(financial_dataset, batch_size=batch_size, shuffle=True, collate_fn=FinancialDataset.collate_fn)
+train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
+valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=True, collate_fn=valid_dataset.collate_fn)
 
 # エポックを通しての損失を格納するリスト
-losses = []
+losses_generator = []
+losses_discriminator = []
 
 max_grad_norm = 1.0  # 勾配の最大ノルム
 
-
-# Generatorの学習
 for epoch in tqdm(range(learning_epoch_num)):
-    for j, data in enumerate(financial_dataloader):
+    # Generatorの学習
+    for j, data in enumerate(train_dataloader):
         #print("data_shape", data[0].shape)
         week = data[0].shape[1]
         num = data[0].shape[2]
@@ -223,7 +222,7 @@ for epoch in tqdm(range(learning_epoch_num)):
         transformer_optimizer.zero_grad()
         text_cconcatenate_optimizer.zero_grad()
         optimizer_generator.zero_grad()
-
+        
         #print("target_shape", data[2].shape)
         # 教師データと推定データを生成
         target = data[2].to(device)  # 教師データ
@@ -244,7 +243,7 @@ for epoch in tqdm(range(learning_epoch_num)):
         # TensorをNumPyに変換
         loss_numpy = loss.cpu().detach().numpy()
         # 損失をリストに追加
-        losses.append(loss_numpy)
+        losses_generator.append(loss_numpy)
 
         # パラメータの更新
         bert_model_optimizer.step()
@@ -252,15 +251,43 @@ for epoch in tqdm(range(learning_epoch_num)):
         text_cconcatenate_optimizer.step()
         optimizer_generator.step()
 
-        # 損失の出力
-        # print(f"RMSE Loss: {loss.item()}")
+        # Discriminatorの学習
+        # 勾配をゼロにリセット  
+        optimizer_discriminator.zero_grad()
+
+        # 本物のデータを判定
+        d_real = discriminator(torch.permute(target, (0,2,1)))
+        #print("d_real", d_real.shape)
+
+        # 偽物のデータを判定．
+        d_fake = discriminator(torch.permute(predictions.detach(), (0,2,1)))
+        
+        # 損失の計算
+        d_real_loss = criterion(d_real, torch.ones_like(d_real))
+        d_fake_loss = criterion(d_fake, torch.zeros_like(d_fake))
+        d_loss = d_real_loss + d_fake_loss
+
+        # 誤差逆伝播
+        d_loss.backward()
+
+        # loss をリストに追加
+        losses_discriminator.append(d_loss.cpu().detach().numpy())
+
+        # 勾配クリッピングの適用
+        torch.nn.utils.clip_grad_norm_(discriminator.parameters(), max_grad_norm)
+
+        # パラメータの更新
+        optimizer_discriminator.step()
 
     # エポックの平均損失の計算
-    avg_loss = np.mean(losses)
+    avg_generator_loss = np.mean(losses_generator)
+    avg_discriminator_loss = np.mean(losses_discriminator)
     # TensorBoardに記録
-    writer.add_scalar('Training loss', avg_loss, epoch)
+    writer.add_scalar('Training loss(Generator)', avg_generator_loss, epoch)
+    writer.add_scalar('Training loss(Discriminator)', avg_discriminator_loss, epoch)
 
-    logging.info('Training loss : epoch = '  + str(epoch) +  '  loss = ' + str(avg_loss) ) 
+    logging.info(f"Epoch {epoch+1}/{learning_epoch_num} : Generator loss = {avg_generator_loss}, Discriminator loss = {avg_discriminator_loss}")
+    #logging.info('Training loss(Generator) : epoch = '  + str(epoch) +  '  loss = ' + str(avg_generator_loss) ) 
 
     # modelの保存. model/ に保存される
     if epoch % 10 == 0:
