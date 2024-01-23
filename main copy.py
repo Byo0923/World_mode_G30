@@ -70,7 +70,7 @@ writer: SummaryWriter = SummaryWriter(
 
 # tensorboard --logdir=logd
 
-batch_size = 8
+batch_size = 4
 logging.info("batch_size = " + str(batch_size) )
 learning_epoch_num = 1000
 logging.info("learning_epoch_num = " + str(learning_epoch_num) )
@@ -167,7 +167,7 @@ train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True
 valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=True, collate_fn=valid_dataset.collate_fn)
 
 # エポックを通しての損失を格納するリスト
-losses_g = []
+losses_generator = []
 losses_discriminator = []
 
 max_grad_norm = 1.0  # 勾配の最大ノルム
@@ -180,10 +180,6 @@ for epoch in tqdm(range(learning_epoch_num)):
         num = data[0].shape[2]
         b = data[0].shape[0]
         prices = data[0].reshape(b, week*num ,price_feature_dim).to(device)
-        # 教師データをGPUに転送
-        target = data[2].to(device)  # 教師データ
-        #print("target", target.shape)
-
         #print("prices" , prices.shape)
         latent_vector, attention_weights = transformer_model_with_attention(prices)
         #print("latent_vector" , latent_vector.shape)
@@ -217,30 +213,23 @@ for epoch in tqdm(range(learning_epoch_num)):
         all_reports_latent = torch.cat( [all_reports, latent_vector] , dim=1)
         #print("all_reports_latent", all_reports_latent.shape)
 
-        # 勾配をゼロにリセット
-        bert_model_optimizer.zero_grad()
-        transformer_optimizer.zero_grad()
-        text_cconcatenate_optimizer.zero_grad()
-        optimizer_generator.zero_grad()
-
         # Generatorに入力
         predictions = generator(all_reports_latent)
         #print("predictions", predictions.shape)
 
         # Discriminatorを欺く方向に学習
-        d_fake = discriminator(torch.permute(predictions, (0,2,1)))
+
+        
+        #print("target_shape", data[2].shape)
+        # 教師データと推定データを生成
+        target = data[2].to(device)  # 教師データ
+        #print("target", target.shape)
 
         # 損失の計算
-        loss_g = criterion(d_fake, torch.ones_like(d_fake))
+        loss = rmse_loss(predictions, target)
 
         # 誤差逆伝播
-        loss_g.backward(retain_graph=True)
-
-        # # 損失の計算
-        # loss = rmse_loss(predictions, target)
-
-        # # 誤差逆伝播
-        # loss.backward(retain_graph=False)
+        loss.backward(retain_graph=False)
 
         # 勾配クリッピングの適用
         torch.nn.utils.clip_grad_norm_(bert_model.parameters(), max_grad_norm)
@@ -248,16 +237,16 @@ for epoch in tqdm(range(learning_epoch_num)):
         torch.nn.utils.clip_grad_norm_(text_cconcatenate.parameters(), max_grad_norm)
         torch.nn.utils.clip_grad_norm_(generator.parameters(), max_grad_norm)
 
+        # TensorをNumPyに変換
+        loss_numpy = loss.cpu().detach().numpy()
         # 損失をリストに追加
-        losses_g.append(loss_g.cpu().detach().numpy())
+        losses_generator.append(loss_numpy)
 
         # パラメータの更新
         bert_model_optimizer.step()
         transformer_optimizer.step()
         text_cconcatenate_optimizer.step()
         optimizer_generator.step()
-
-################################################################################################
 
         # Discriminatorの学習
         # 勾配をゼロにリセット  
@@ -288,7 +277,7 @@ for epoch in tqdm(range(learning_epoch_num)):
         optimizer_discriminator.step()
 
     # エポックの平均損失の計算
-    avg_generator_loss = np.mean(losses_g)
+    avg_generator_loss = np.mean(losses_generator)
     avg_discriminator_loss = np.mean(losses_discriminator)
     # TensorBoardに記録
     writer.add_scalar('Training loss(Generator)', avg_generator_loss, epoch)
