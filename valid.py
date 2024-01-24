@@ -84,10 +84,10 @@ param_bert_num = 0
 # モデルのインスタンス化
 transformer_model_with_attention = TransformerModelWithPositionalEncoding(price_feature_dim, hidden_size, price_output_size, nhead, num_encoder_layers, dim_feedforward).to(device)
 
-from ml.text.text_concatenate import TEXT_Cconcatenate
+from ml.text.text_concatenate import TEXT_Concatenate
 all_reports_dim = one_report_dim * 5
 all_reports_out_dim = 128
-text_cconcatenate = TEXT_Cconcatenate(all_reports_dim, all_reports_out_dim).to(device)
+text_cconcatenate = TEXT_Concatenate(all_reports_dim, all_reports_out_dim).to(device)
 
 # Generator
 from ml.gan.generator import Generator
@@ -118,10 +118,10 @@ valid_dataloader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=Fals
 max_grad_norm = 1.0  # 勾配の最大ノルム
 
 # モデルのロード
-bert_model.load_state_dict(torch.load("model/20240123/bert_model_990.pth"))
-transformer_model_with_attention.load_state_dict(torch.load("model/20240123/transformer_model_with_attention_990.pth"))
-text_cconcatenate.load_state_dict(torch.load("model/20240123/text_cconcatenate_990.pth"))
-generator.load_state_dict(torch.load("model/20240123/generator_990.pth"))
+bert_model.load_state_dict(torch.load("model/bert_model_990.pth"))
+transformer_model_with_attention.load_state_dict(torch.load("model/transformer_model_with_attention_990.pth"))
+text_cconcatenate.load_state_dict(torch.load("model/text_cconcatenate_990.pth"))
+generator.load_state_dict(torch.load("model/generator_990.pth"))
 
 # 評価
 with torch.no_grad():
@@ -186,3 +186,15 @@ predictions = torch.cat(predictions_list, dim=0)
 target = torch.cat(target_list, dim=0)
 print("predictions", predictions.shape)
 print("target", target.shape)
+
+# RMSEを計算
+rmse = torch.sqrt(torch.mean((predictions - target) ** 2))
+print("RMSE", rmse)
+
+# 予測結果をプロット
+from util import plot_target
+fig1 = plot_target(predictions)
+fig2 = plot_target(target)
+
+fig1.savefig("output/Estimated.png")
+fig2.savefig("output/Real.png")

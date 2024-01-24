@@ -4,7 +4,8 @@
 
 # text
 *.txt
-
+# png
+result/*
 # pkl
 data/stock_data/*.pkl
 

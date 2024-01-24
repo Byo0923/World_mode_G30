@@ -126,10 +126,10 @@ transformer_model_with_attention = TransformerModelWithPositionalEncoding(price_
 transformer_optimizer = torch.optim.AdamW(transformer_model_with_attention.parameters(), lr=0.0001)
 
 
-from ml.text.text_concatenate import TEXT_Cconcatenate
+from ml.text.text_concatenate import TEXT_Concatenate
 all_reports_dim = one_report_dim * 5
 all_reports_out_dim = 128
-text_cconcatenate = TEXT_Cconcatenate(all_reports_dim, all_reports_out_dim).to(device)
+text_cconcatenate = TEXT_Concatenate(all_reports_dim, all_reports_out_dim).to(device)
 text_cconcatenate_optimizer = torch.optim.AdamW(text_cconcatenate.parameters(), lr=0.0001)
 
 # Generator
@@ -139,7 +139,7 @@ optimizer_generator = torch.optim.AdamW(generator.parameters(), lr=0.0001)
 
 # Discriminator
 from ml.gan.discriminator import *
-discriminator = NewDiscriminator().to(device)#Discriminator().to(device)
+discriminator = Discriminator().to(device)#Discriminator().to(device)
 optimizer_discriminator = torch.optim.AdamW(discriminator.parameters(), lr=0.0001)
 
 
