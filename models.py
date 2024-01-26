@@ -23,9 +23,10 @@ class StockPriceEstimator(nn.Module):
 
         # 凍結する層の設定
         for name, param in self.bert_model.bert.named_parameters():
-            if 'encoder.layer.11' not in name and 'pooler' not in name:
-                param.requires_grad = False
+            #if 'encoder.layer.11' not in name and 'pooler' not in name:
+            param.requires_grad = False
 
+        
     def forward(self, price, text):
         b, week, num = price.shape[0], price.shape[1], price.shape[2]
         region_num = text.shape[2]
@@ -50,6 +51,8 @@ class StockPriceEstimator(nn.Module):
                 all_reports = torch.cat([all_reports, week_report], dim=1)#all_reports.append(week_reports)
 
         # all_reportsとPriceのLatentをCat
+        #all_reports = torch.zeros_like(all_reports).to("cuda")
+        latent_vector = torch.zeros_like(latent_vector).to("cuda")
         all_reports_latent = torch.cat( [all_reports, latent_vector] , dim=1)
 
         out = self.generator(all_reports_latent).view(b, 20, 3)
@@ -58,39 +61,28 @@ class StockPriceEstimator(nn.Module):
 class Generator(nn.Module):
     def __init__(self, ):
         super().__init__()
-        self.linear_1 = nn.Linear(768, 256)
-        self.linear_2 = nn.Linear(256, 60)
-        self.dropout = nn.Dropout(0.2)
-        self.relu = nn.LeakyReLU()
+        self.layers = nn.Sequential(  
+            nn.Linear(768, 256),
+            nn.LeakyReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(256, 60),
+        )
 
     def forward(self, x):
-        out_1 = self.linear_1(x)
-        out_2 = self.linear_2(self.relu(out_1))
-        return out_2
+        return self.layers(x)
     
 class Discriminator(nn.Module):
-    def __init__(self, sig=True):
-        super().__init__()
-        self.sig = sig
-        self.conv1 = nn.Conv1d(3, 256, kernel_size=3, stride=1, padding='same')  # 入力チャンネル数を3に変更
-        self.conv2 = nn.Conv1d(256, 256, kernel_size=3, stride=1, padding='same')
-        self.conv3 = nn.Conv1d(256, 128, kernel_size=3, stride=1, padding='same')
-        self.linear1 = nn.Linear(2560, 1024)
-        #self.batch1 = nn.BatchNorm1d(1024)
-        self.linear2 = nn.Linear(1024, 512)
-        #self.batch2 = nn.BatchNorm1d(512)
-        self.linear3 = nn.Linear(512, 1)
-        self.leaky = nn.LeakyReLU(0.01)
-        self.relu = nn.ReLU()
-        self.sigmoid = nn.Sigmoid()
-        
+    def __init__(self):
+        super().__init__() 
+
         self.conv_layers = nn.Sequential(
-            nn.Conv1d(3, 256, kernel_size=3, stride=1, padding='same'),
+            nn.Conv1d(20, 10, kernel_size=3, stride=1, padding='same'),
             nn.LeakyReLU(0.01),
-            nn.Conv1d(256, 256, kernel_size=3, stride=1, padding='same'),
+            nn.Conv1d(10, 5, kernel_size=3, stride=1, padding='same'),
             nn.LeakyReLU(0.01),
-            nn.Conv1d(256, 128, kernel_size=3, stride=1, padding='same'),
+            nn.Conv1d(5, 1, kernel_size=3, stride=1, padding='same'),
             nn.LeakyReLU(0.01),
+            
         )
         self.fc = nn.Sequential(
             nn.Linear(2560, 1024),
@@ -100,13 +92,40 @@ class Discriminator(nn.Module):
             nn.Linear(512, 1),
             nn.Sigmoid()
         )
+        self.fc2 = nn.Sequential(
+            nn.Linear(3, 1),
+        )
 
     def forward(self, x):
+        x = x.reshape(-1, x.shape[2], x.shape[1])
         latent = self.conv_layers(x)
-        latent = latent.reshape(latent.shape[0], latent.shape[1]*latent.shape[2])
-        out = self.fc(latent)
+        latent = latent.reshape(-1, latent.shape[2])
+        out = self.fc2(latent)
         return out
 
+if __name__ == "__main__":
+    import argparse
+    # ハイパーパラメータ
+    parser = argparse.ArgumentParser()
 
-    
+    parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--learning_epoch_num", type=int, default=1000)
+    parser.add_argument("--one_report_dim", type=int, default=64)
+    parser.add_argument("--price_feature_dim", type=int, default=11)
+    parser.add_argument("--hidden_size", type=int, default=512)
+    parser.add_argument("--price_output_size", type=int, default=256)
+    parser.add_argument("--nhead", type=int, default=8)
+    parser.add_argument("--num_encoder_layers", type=int, default=3)
+    parser.add_argument("--dim_feedforward", type=int, default=2048)
+    parser.add_argument("--max_grad_norm", type=int, default=1.0)
+    parser.add_argument("--learning_rate", type=float, default=1e-4)
+    args = parser.parse_args()
+
+    discriminator = Discriminator()
+    x = torch.randn(8, 3, 20)
+    out = discriminator(x)
+    print(out.shape)
+
+    model = StockPriceEstimator(args).to("cuda")
+    print(model)
 
