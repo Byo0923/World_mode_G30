@@ -14,6 +14,7 @@ import argparse
 from util import rmse_loss, plot_target
 import matplotlib.pyplot as plt
 from models import StockPriceEstimator, Discriminator
+from util import visualize_result
 
 # tensorboard --logdir=result
 
@@ -97,6 +98,7 @@ valid_train_data = data[(data.index >= '2018-01-01') & (data.index < '2019-12-31
 train_dataset = FinancialDataset(train_data, week_len=4, target_len=80)
 valid_dataset = FinancialDataset(valid_data, week_len=4, target_len=80)
 valid_train_dataset = FinancialDataset(valid_train_data, week_len=4, target_len=80)
+
 train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=train_dataset.collate_fn)
 valid_dataloader = DataLoader(valid_dataset, batch_size=args.batch_size, shuffle=False, drop_last=True, collate_fn=valid_dataset.collate_fn)
 valid_train_dataloader = DataLoader(valid_train_dataset, batch_size=args.batch_size, shuffle=False, drop_last=True, collate_fn=valid_train_dataset.collate_fn)
@@ -163,8 +165,10 @@ for epoch in tqdm(range(args.learning_epoch_num)):
         with torch.no_grad():
             pred_list = []
             target_list = []
+            price_list = []
             for j, x in enumerate(valid_dataloader):
                 price, text, target = x[0].to(device), x[1].to(device), x[2].to(device)
+                price_list.append(price.cpu().detach().numpy())
                 # Generatorに入力
                 pred = generator(price, text)
                 # 予測値をリストに追加
@@ -188,7 +192,8 @@ for epoch in tqdm(range(args.learning_epoch_num)):
         writer.add_scalar('Validation RMSE(Generator)', avg_rmse_valid_g, epoch)
 
         # 可視化
-        pred, target = np.concatenate(pred_list, axis=0), np.concatenate(target_list, axis=0)
+        price, pred, target = np.concatenate(price_list, axis=0), np.concatenate(pred_list, axis=0), np.concatenate(target_list, axis=0)
+
         # (b, f, dim) -> (b*f, dim)に変換
         pred, target = pred.reshape(-1, pred.shape[-1]), target.reshape(-1, target.shape[-1])
         fig, ax = plt.subplots(figsize=(20, 10))
@@ -243,8 +248,10 @@ for epoch in tqdm(range(args.learning_epoch_num)):
         with torch.no_grad():
             pred_list = []
             target_list = []
+            price_list = []
             for j, x in enumerate(valid_dataloader):
                 price, text, target = x[0].to(device), x[1].to(device), x[2].to(device)
+                price_list.append(price.cpu().detach().numpy())
                 # Generatorに入力
                 pred = generator(price, text)
                 # 予測値をリストに追加
@@ -263,10 +270,15 @@ for epoch in tqdm(range(args.learning_epoch_num)):
         writer.add_scalar('Validation loss(Generator)', avg_loss_valid_g, epoch)
 
         # 可視化
-        pred, target = np.concatenate(pred_list, axis=0), np.concatenate(target_list, axis=0)
+        price, pred, target = np.concatenate(price_list, axis=0), np.concatenate(pred_list, axis=0), np.concatenate(target_list, axis=0)
+        for num in range(len(pred)):
+            fig = visualize_result(price[num], pred[num], target[num])
+            os.makedirs(f"{fig_dir}/epoch{epoch}", exist_ok=True)
+            fig.savefig(f"{fig_dir}/epoch{epoch}/{num}.png")
+            plt.close()
         # (b, f, dim) -> (b*f, dim)に変換
         pred, target = pred.reshape(-1, pred.shape[-1]), target.reshape(-1, target.shape[-1])
-        fig, ax = plt.subplots(figsize=(20, 10))
+        fig_all, ax = plt.subplots(figsize=(20, 10))
         ax.plot(pred[:, 0], label="pred")
         ax.fill_between(range(len(pred[:, 0])), pred[:, 1], pred[:, 2], color="blue", alpha=0.3)
         ax.plot(target[:, 0], label="target")
@@ -274,7 +286,7 @@ for epoch in tqdm(range(args.learning_epoch_num)):
         plt.legend()
         plt.title(f"Prediction and Target, RMSE: {avg_loss_valid_g}")
 
-        writer.add_figure('Fig_valid', fig, epoch)
+        writer.add_figure('Fig_valid', fig_all, epoch)
 
         logging.info(f"Epoch {epoch+1}/{args.learning_epoch_num} : Training loss = {avg_loss_train_g}, Validation loss = {avg_loss_valid_g}")
 
@@ -285,7 +297,7 @@ for epoch in tqdm(range(args.learning_epoch_num)):
             # 予測値と正解値の可視化
             np.save(f"{valid_dir}/pred_{epoch}.npy", pred)
             np.save(f"{valid_dir}/target_{epoch}.npy", target)
-            fig.savefig(f"{fig_dir}/valid_{epoch}.png")
+            fig_all.savefig(f"{fig_dir}/valid_{epoch}.png")
         
         # Trainデータでの評価
         generator.eval()

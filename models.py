@@ -26,7 +26,6 @@ class StockPriceEstimator(nn.Module):
             #if 'encoder.layer.11' not in name and 'pooler' not in name:
             param.requires_grad = False
 
-        
     def forward(self, price, text):
         b, week, num = price.shape[0], price.shape[1], price.shape[2]
         region_num = text.shape[2]
@@ -34,35 +33,69 @@ class StockPriceEstimator(nn.Module):
 
         latent_vector, attention_weights = self.transformer_model(prices)
         
-        all_reports = None
-        for w in range(week):
-            tex_latent_regions =[]
-            for r in range(region_num):
-                text_region = text[:,w, r ].reshape(b, 500)
-                tex_latent = self.bert_model(text_region)
-                tex_latent_regions.append(tex_latent)
-            week_report = torch.cat( [tex_latent_regions[0],tex_latent_regions[1],tex_latent_regions[2],tex_latent_regions[3],tex_latent_regions[4]]  , dim=1)
+        # all_reports = None
+        # for w in range(week):
+        #     tex_latent_regions =[]
+        #     for r in range(region_num):
+        #         text_region = text[:,w, r ].reshape(b, 500)
+        #         tex_latent = self.bert_model(text_region)
+        #         tex_latent_regions.append(tex_latent)
+        #     week_report = torch.cat( [tex_latent_regions[0],tex_latent_regions[1],tex_latent_regions[2],tex_latent_regions[3],tex_latent_regions[4]]  , dim=1)
 
-            # Text concat
-            week_report = self.text_concatenate(week_report)
-            if all_reports == None:
-                all_reports = week_report
-            else:
-                all_reports = torch.cat([all_reports, week_report], dim=1)#all_reports.append(week_reports)
+        #     # Text concat
+        #     week_report = self.text_concatenate(week_report)
+        #     if all_reports == None:
+        #         all_reports = week_report
+        #     else:
+        #         all_reports = torch.cat([all_reports, week_report], dim=1)
+        #all_reports.append(week_reports)
 
         # all_reportsとPriceのLatentをCat
         #all_reports = torch.zeros_like(all_reports).to("cuda")
-        latent_vector = torch.zeros_like(latent_vector).to("cuda")
-        all_reports_latent = torch.cat( [all_reports, latent_vector] , dim=1)
+        # latent_vector = torch.zeros_like(latent_vector).to("cuda")
+        # all_reports_latent = torch.cat( [all_reports, latent_vector] , dim=1)
+        all_reports_latent = torch.cat( [latent_vector] , dim=1)
+
 
         out = self.generator(all_reports_latent).view(b, 20, 3)
         return out
+        
+    # def forward(self, price, text):
+    #     b, week, num = price.shape[0], price.shape[1], price.shape[2]
+    #     region_num = text.shape[2]
+    #     prices = price.reshape(b, week*num ,self.args.price_feature_dim)
+
+    #     latent_vector, attention_weights = self.transformer_model(prices)
+        
+    #     all_reports = None
+    #     for w in range(week):
+    #         tex_latent_regions =[]
+    #         for r in range(region_num):
+    #             text_region = text[:,w, r ].reshape(b, 500)
+    #             tex_latent = self.bert_model(text_region)
+    #             tex_latent_regions.append(tex_latent)
+    #         week_report = torch.cat( [tex_latent_regions[0],tex_latent_regions[1],tex_latent_regions[2],tex_latent_regions[3],tex_latent_regions[4]]  , dim=1)
+
+    #         # Text concat
+    #         week_report = self.text_concatenate(week_report)
+    #         if all_reports == None:
+    #             all_reports = week_report
+    #         else:
+    #             all_reports = torch.cat([all_reports, week_report], dim=1)#all_reports.append(week_reports)
+
+    #     # all_reportsとPriceのLatentをCat
+    #     #all_reports = torch.zeros_like(all_reports).to("cuda")
+    #     latent_vector = torch.zeros_like(latent_vector).to("cuda")
+    #     all_reports_latent = torch.cat( [all_reports, latent_vector] , dim=1)
+
+    #     out = self.generator(all_reports_latent).view(b, 20, 3)
+    #     return out
 
 class Generator(nn.Module):
     def __init__(self, ):
         super().__init__()
         self.layers = nn.Sequential(  
-            nn.Linear(768, 256),
+            nn.Linear(256, 256),
             nn.LeakyReLU(),
             nn.Dropout(0.2),
             nn.Linear(256, 60),
